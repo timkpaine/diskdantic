@@ -53,14 +53,26 @@ class _SortInstruction:
 class Collection(Generic[T]):
     """Lazy, disk-backed collection of Pydantic models.
 
-    A collection manages a directory of files that share a schema. Files are
-    parsed on demand into ``model`` instances, cached, and round-tripped via a
-    configurable file handler (markdown frontmatter, JSON, YAML, ...). Query
-    methods (`filter`, `order_by`, `head`, `tail`, `to_list`, …) are lazy until
-    materialized.
+    Parameters
+    ----------
+    model:
+        Pydantic model type used to validate each record found on disk.
+    path:
+        Root directory where files live. Created automatically if missing.
+    format:
+        Named handler for interpreting files (``"markdown"``, ``"json"``,
+        ``"yaml"``). Required when the directory is empty or mixed, otherwise
+        it can be inferred from existing files.
+    body_field:
+        Optional field name that should receive the free-form body of a file.
+        Mainly used by the markdown handler to split frontmatter from content.
+    recursive:
+        When ``True``, the collection scans sub-directories with ``Path.rglob``;
+        otherwise only files directly inside ``path`` are considered.
 
-    Instances remain pure Pydantic models; path bookkeeping is handled out of
-    band so that domain models never need to inherit from a custom base class.
+    The collection loads files lazily: query methods compose filters and only
+    read from disk when materialized (iteration, ``to_list``, ``first``...).
+    Instances remain pure Pydantic models; disk metadata is tracked separately.
     """
 
     def __init__(
@@ -121,6 +133,18 @@ class Collection(Generic[T]):
 
     def __iter__(self) -> Iterator[T]:
         return iter(self.query())
+
+    def get(self, filename: str | Path) -> Optional[T]:
+        """Load a single file by name relative to the collection root."""
+        target = Path(filename)
+        if not target.is_absolute():
+            target = (self.root / target).resolve()
+        if not target.exists() or not target.is_file():
+            return None
+        extensions = self._handler.extensions or (self._handler.extension,)
+        if target.suffix.lower() not in extensions:
+            return None
+        return self._load_model(target)
 
     # Lifecycle operations ----------------------------------------------
     def add(self, model: T, path: Path | str | None = None) -> Path:

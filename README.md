@@ -35,3 +35,35 @@ new_post = BlogPost(
 )
 posts.add(new_post)
 ```
+
+### Nested folders
+
+```python
+from diskdantic import NestedCollection
+from pydantic import BaseModel
+
+
+class ShowInfo(BaseModel):
+    slug: str
+    title: str
+    summary: str | None = None
+
+
+class Episode(BaseModel):
+    title: str
+    content: str
+
+
+shows = NestedCollection(
+    parent_model=ShowInfo,
+    child_model=Episode,
+    root="./shows",
+    parent_filename="info.yml",
+    parent_format="yaml",
+    child_format="markdown",
+    child_body_field="content",
+)
+
+for record in shows:
+    print(record.info.title, len(record.episodes))
+```
