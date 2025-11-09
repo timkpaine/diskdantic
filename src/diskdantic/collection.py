@@ -147,6 +147,11 @@ class Collection(Generic[T]):
 
     # Lifecycle operations ----------------------------------------------
     def add(self, model: T, path: Path | str | None = None) -> Path:
+        # Check if model is already tracked - if so, return existing path
+        existing_path = self._lookup_path(model)
+        if existing_path is not None:
+            return existing_path
+
         target = self._prepare_path(model, explicit_path=path)
         data = model.model_dump()
         self._handler.write(target, data, body_field=self.body_field)
@@ -204,6 +209,15 @@ class Collection(Generic[T]):
                 path = self.root / path
             return path
         candidate = self._derive_path_for_model(model)
+
+        # If the derived path exists, check if it contains the same data
+        if candidate.exists():
+            existing_model = self._load_model(candidate, force=True)
+            if existing_model.model_dump() == model.model_dump():
+                # Same content - reuse this path
+                return candidate
+
+        # Path doesn't exist or contains different content - find an available name
         counter = 1
         while candidate.exists():
             candidate = candidate.with_stem(f"{candidate.stem}-{counter}")
