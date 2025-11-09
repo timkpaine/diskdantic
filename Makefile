@@ -1,10 +1,14 @@
-.PHONY: install test publish clean
+.PHONY: install lint test publish clean
 
 # Install dependencies using uv
 install:
 	uv venv --allow-existing
-	uv pip install -e .
-	uv pip install --group dev
+	uv sync --group dev
+	uv run pre-commit install
+
+# Run linting
+lint:
+	uv run pre-commit run --all-files
 
 # Run tests
 test:
@@ -20,6 +24,7 @@ clean:
 	rm -rf build/
 	rm -rf dist/
 	rm -rf *.egg-info
+	rm -rf .venv
 	rm -rf .pytest_cache
 	rm -rf .ruff_cache
 	find . -type d -name __pycache__ -exec rm -rf {} +

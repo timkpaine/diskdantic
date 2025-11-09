@@ -38,7 +38,7 @@ new_post = BlogPost(
 posts.add(new_post)
 ```
 
-There are also loads of utility functions. 
+There are also loads of utility functions.
 
 ```python
 # Get all published posts
@@ -88,5 +88,4 @@ for post in posts:
 
 ## Why?
 
-It makes it easier to write a custom CMS on top of your disk, which is nice. But it also feels like a fun thing that should exist. 
-
+It makes it easier to write a custom CMS on top of your disk, which is nice. But it also feels like a fun thing that should exist.
