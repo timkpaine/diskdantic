@@ -1,6 +1,8 @@
 ## diskdantic
 
-Disk-backed collections powered by Pydantic models.
+> Instead of having an ORM on top of a database, why not have a collection on top of a folder?
+
+Disk-backed collections powered by Pydantic models. This is pretty much the whole API:
 
 ```python
 from datetime import date
@@ -19,8 +21,8 @@ class BlogPost(BaseModel):
 posts = Collection(
     BlogPost,
     path="./blog/posts",
-    format="markdown",  # required when the folder is empty
-    body_field="content",
+    format="markdown",    # required when the folder is empty
+    body_field="content", # required when format is markdown (for the body)
 )
 
 recent = posts.filter(lambda post: not post.draft).order_by("-date").head(3)
@@ -36,34 +38,12 @@ new_post = BlogPost(
 posts.add(new_post)
 ```
 
-### Nested folders
+It's meant to work with markdown files, but it should also work with yaml/json. 
 
-```python
-from diskdantic import NestedCollection
-from pydantic import BaseModel
+## Why? 
 
+It makes it easier to write a custom CMS on top of your disk, which is nice. But it also feels like a fun thing that should exist. It's mainly a fun brainfart for now, but I can see some areas where I might make it better too. 
 
-class ShowInfo(BaseModel):
-    slug: str
-    title: str
-    summary: str | None = None
+1. Figure out a nice API for a nested collection. The library has one now, but undocumented for a reason.
+2. Maybe make it more performant by seeing how far I can push the lazy loading. Though I doubt this will be worth it. 
 
-
-class Episode(BaseModel):
-    title: str
-    content: str
-
-
-shows = NestedCollection(
-    parent_model=ShowInfo,
-    child_model=Episode,
-    root="./shows",
-    parent_filename="info.yml",
-    parent_format="yaml",
-    child_format="markdown",
-    child_body_field="content",
-)
-
-for record in shows:
-    print(record.info.title, len(record.episodes))
-```
