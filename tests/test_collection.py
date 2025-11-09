@@ -267,3 +267,30 @@ def test_json_date_roundtrip_preserves_type(tmp_path: Path) -> None:
     assert loaded.date.year == 2025
     assert loaded.date.month == 11
     assert loaded.date.day == 9
+
+def test_registration_equivalence() -> None:
+    from diskdantic.handlers import JsonHandler, MarkdownFrontmatterHandler, YamlHandler
+    from diskdantic.collection import FORMAT_REGISTRY, EXTENSION_REGISTRY
+
+    assert FORMAT_REGISTRY["json"] is JsonHandler
+    assert FORMAT_REGISTRY["yaml"] is YamlHandler
+    assert FORMAT_REGISTRY["yml"] is YamlHandler
+    assert FORMAT_REGISTRY["markdown"] is MarkdownFrontmatterHandler
+    assert FORMAT_REGISTRY["md"] is MarkdownFrontmatterHandler
+
+    assert EXTENSION_REGISTRY[".json"] is JsonHandler
+    assert EXTENSION_REGISTRY[".yaml"] is YamlHandler
+    assert EXTENSION_REGISTRY[".yml"] is YamlHandler
+    assert EXTENSION_REGISTRY[".md"] is MarkdownFrontmatterHandler
+    assert EXTENSION_REGISTRY[".markdown"] is MarkdownFrontmatterHandler
+
+def test_collection_register_format_conflict() -> None:
+    from diskdantic.handlers import JsonHandler
+    from diskdantic.collection import _register_format
+
+    class AnotherJsonHandler(JsonHandler):
+        pass
+
+    with pytest.raises(ValueError) as exc_info:
+        _register_format(AnotherJsonHandler)
+    assert "Format 'json' already registered" in str(exc_info.value)

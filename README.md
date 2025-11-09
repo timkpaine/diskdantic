@@ -89,3 +89,17 @@ for post in posts:
 ## Why?
 
 It makes it easier to write a custom CMS on top of your disk, which is nice. But it also feels like a fun thing that should exist.
+
+## Extending
+
+We use [entry points](https://packaging.python.org/en/latest/specifications/entry-points/) to regiser file handlers by extension type. For example, in the [pyproject.toml](./pyproject.toml)
+
+```toml
+[project.entry-points."diskdantic"]
+json = "diskdantic.handlers.JsonHandler"
+markdown = "diskdantic.handlers.MarkdownFrontmatterHandler"
+yaml = "diskdantic.handlers.YamlHandler"
+```
+
+Users may add their own file handlers by implementing the `diskdantic.handlers.FileHandler` abstract class, and providing an entrypoint as above.
+Note that `FileHandler` subclasses define extensions, and for now our own handlers take precedence.

@@ -3,38 +3,28 @@ from __future__ import annotations
 import weakref
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from importlib import import_module
+from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, Tuple
 from uuid import uuid4
+from warnings import warn
 
 from pydantic import BaseModel
 
 from .exceptions import InconsistentFormatError, MissingPathError, UnknownFormatError
-from .handlers import FileHandler, JsonHandler, MarkdownFrontmatterHandler, YamlHandler
+from .handlers import FileHandler, MarkdownFrontmatterHandler
 from .utils import slugify
+
+__all__ = (
+    "Collection",
+)
 
 T = TypeVar("T", bound=BaseModel)
 Predicate = Callable[[T], bool]
 
-FORMAT_REGISTRY: Mapping[str, type[FileHandler]] = {
-    "markdown": MarkdownFrontmatterHandler,
-    "md": MarkdownFrontmatterHandler,
-    ".md": MarkdownFrontmatterHandler,
-    "json": JsonHandler,
-    ".json": JsonHandler,
-    "yaml": YamlHandler,
-    "yml": YamlHandler,
-    ".yaml": YamlHandler,
-    ".yml": YamlHandler,
-}
-
-EXTENSION_REGISTRY: Mapping[str, type[FileHandler]] = {
-    ".md": MarkdownFrontmatterHandler,
-    ".markdown": MarkdownFrontmatterHandler,
-    ".json": JsonHandler,
-    ".yaml": YamlHandler,
-    ".yml": YamlHandler,
-}
+FORMAT_REGISTRY: Mapping[str, type[FileHandler]] = {}
+EXTENSION_REGISTRY: Mapping[str, type[FileHandler]] = {}
 
 
 def _resolve_handler(name: str) -> FileHandler:
@@ -43,6 +33,76 @@ def _resolve_handler(name: str) -> FileHandler:
     except KeyError as exc:
         raise UnknownFormatError(f"Unsupported format '{name}'") from exc
     return handler_cls()
+
+
+def _register_format(handler_cls: type[FileHandler], force: bool = False) -> None:
+    """Register a custom file format handler.
+
+    Parameters
+    ----------
+    handler_cls:
+        Subclass of ``FileHandler`` that implements reading/writing.
+    """
+    for extension in (handler_cls.extension, *(handler_cls.extensions or ())):
+        if not extension.startswith("."):
+            extension = f".{extension}"
+
+        format_name = extension.lower().lstrip(".")
+        extension_name = extension.lower()
+
+        if format_name in FORMAT_REGISTRY and not force:
+            existing = FORMAT_REGISTRY[format_name]
+            if existing is not handler_cls:
+                raise ValueError(
+                    f"Format '{format_name}' already registered to {existing.__name__}"
+                )
+
+        # Register formats by name and extension
+        if extension_name in FORMAT_REGISTRY and not force:
+            existing = FORMAT_REGISTRY[format_name]
+            if existing is not handler_cls:
+                raise ValueError(
+                    f"Format '{extension_name}' already registered to {existing.__name__}"
+                )
+
+        if extension_name in EXTENSION_REGISTRY and not force:
+            existing = EXTENSION_REGISTRY[extension_name]
+            if existing is not handler_cls:
+                raise ValueError(
+                    f"Extension '{extension_name}' already registered to {existing.__name__}"
+                )
+
+        FORMAT_REGISTRY[format_name] = handler_cls
+        FORMAT_REGISTRY[extension_name] = handler_cls
+        EXTENSION_REGISTRY[extension_name] = handler_cls
+
+
+def _load_entrypoints():
+    _discovered_plugins = entry_points(group="diskdantic")
+    _handlers: Tuple[type, bool] = []
+    for entry_point in _discovered_plugins:
+        try:
+            module_path, className = entry_point.value.rsplit(".", 1)
+
+            # Maybe allow prioritization based on source later
+            priority = 0 if module_path.startswith("diskdantic.") else 1
+
+            mod = import_module(module_path)
+            thing = getattr(mod, className)
+        except ImportError as e:
+            warn(f"Diskdantic could not load entry point {entry_point.name}: {e}")
+            continue
+        if not isinstance(thing, type) or not issubclass(thing, FileHandler):
+            warn(f"Diskdantic entry point {entry_point.name} is not a FileHandler subclass")
+            continue
+        _handlers.append((thing, priority))
+
+    # Register handlers, prioritizing those with force=True (currently just diskdantic.)
+    for handler, _ in sorted(_handlers, key=lambda pair: pair[1]):
+        try:
+            _register_format(handler)
+        except ValueError as e:
+            warn(f"Diskdantic could not register handler with duplicate extension {handler.__name__}: {e}")
 
 
 @dataclass(frozen=True)
@@ -89,6 +149,11 @@ class Collection(Generic[T]):
         self.root = Path(path).expanduser()
         self.root.mkdir(parents=True, exist_ok=True)
         self._recursive = recursive
+
+        if not FORMAT_REGISTRY or not EXTENSION_REGISTRY:
+            # Load on first use
+            _load_entrypoints()
+
         self._handler = (
             _resolve_handler(format) if format is not None else self._infer_handler(strict=True)
         )
